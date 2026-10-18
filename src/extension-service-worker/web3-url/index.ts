@@ -6,7 +6,10 @@ const dataScheme = 'data:';
 const httpScheme = 'http://';
 const httpsScheme = 'https://';
 const web3UrlRegex = /^web3:\/\/(?:|(?<userInfo>[^@]+)@)(?<hostname>[^:\/]+)(?:|:(?<chainId>[1-9]\d*))(?<path>|\/.*)$/i;
-const rewritableUrlRegex = /^https?:\/\/(?:|(?<userInfo>[^@]+)@)(?<hostname>[^:\/]+)\.web3(?:|:(?<chainId>[1-9]\d*))(?<path>|\/.*)$/i;
+// Rewritable URLs encode the chain ID as an extra subdomain label
+// (https://name.<chainId>.web3/...) instead of a TCP port, because ports
+// are limited to 65535 and many chain IDs (e.g. Sepolia 11155111) exceed that.
+const rewritableUrlRegex = /^https?:\/\/(?:|(?<userInfo>[^@]+)@)(?<hostname>[^:\/]+?)(?:\.(?<chainId>[1-9]\d*)|)\.web3(?<path>|\/.*)$/i;
 const testHttpUrl = 'https://test.null';
 const testHttpUrlLength = testHttpUrl.length;
 const fictitiousWeb3Tld = '.web3';
@@ -32,7 +35,7 @@ export class web3Url {
 			throw new Error('Invalid web3 URL: ' + url);
 		}
 		this.userInfo = matchResult.groups.userInfo ? matchResult.groups.userInfo : null;
-		this.hostname = matchResult.groups.hostname;
+		this.hostname = matchResult.groups.hostname.toLowerCase();
 		this.chainId = isNaN(parseInt(matchResult.groups.chainId)) ? 1 : parseInt(matchResult.groups.chainId);
 		this.path = matchResult.groups.path ? matchResult.groups.path : '/';
 	}
@@ -41,12 +44,8 @@ export class web3Url {
 		return web3Scheme + (this.userInfo ? (this.userInfo + '@') : '') + this.hostname + (this.chainId != 1 ? (':' + this.chainId.toString()) : '') + this.path;
 	}
 
-	toExtension(): string {
-		return chromeExtensionPrefix + this.toString();
-	}
-
 	toRewritable(): string {
-		return httpsScheme + (this.userInfo ? (this.userInfo + '@') : '') + this.hostname + fictitiousWeb3Tld + (this.chainId != 1 ? (':' + this.chainId.toString()) : '') + this.path;
+		return httpsScheme + (this.userInfo ? (this.userInfo + '@') : '') + this.hostname + (this.chainId != 1 ? ('.' + this.chainId.toString()) : '') + fictitiousWeb3Tld + this.path;
 	}
 
 	// Resolves a relative or absolute path against a web3 URL.
@@ -80,24 +79,6 @@ export class web3Url {
 			return href;
 		}
 		return this.resolve(href).toString();
-	}
-
-	// extensionMaybeHttp resolves a URL but also accepts and returns HTTP URLs as-is.
-	// For web3:// URLs, it will return the chrome-extension:// version of the URL.
-	extensionMaybeHttp(href: string): string {
-		if (href.startsWith(httpsScheme) || href.startsWith(httpScheme) || href.startsWith(dataScheme)) {
-			return href;
-		}
-		return this.resolve(href).toExtension();
-	}
-
-	// rewritableMaybeHttp resolves a URL but also accepts and returns HTTP URLs as-is.
-	// For web3:// URLs, it will return the rewritable version of it.
-	rewritableMaybeHttp(href: string): string {
-		if (href.startsWith(httpsScheme) || href.startsWith(httpScheme) || href.startsWith(dataScheme)) {
-			return href;
-		}
-		return this.resolve(href).toRewritable();
 	}
 
 	getRoot(): web3Url {

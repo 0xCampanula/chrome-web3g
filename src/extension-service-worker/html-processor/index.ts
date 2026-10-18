@@ -14,12 +14,34 @@ const headTagRegex = /<head(?:\s[^>]*)?>/i;
 const baseTagRegexGlobal = /<base(?:\s[^>]*)?>/gi;
 const linkTagRegexGlobal = /<link(|\s[^>]*)>/gi;
 const scriptTagRegexGlobal = /<script((?:\s[^>]*)?)>((?:(?!<\/script).)*?)<\/script\s*>/sgi;
-const quotedAttributeRegex = /([-_\w\.]+)=(['"])((?:(?!\2).)*)\2/si;
-const unquotedAttributeRegex = /([-_\w\.]+)=\S*/i;
-const nakedAttributeRegex = /([-_\w\.]+)/i;
+const attributeTokenRegexGlobal = /([-_\w\.]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>=]+)))?/g;
 const cssCommentsRegexGlobal = /\/\*.*?\*\//sgi;
 const cssRuleRegex = /^[-_\.#"'\[\]\w]+\s*(?:,\s*[-_\.#"'\[\]\w]+\s*)*\{/i;
 const cssAtRuleRegex = /^@(?:-|font|charset|keyframes|media)\b/i;
+
+// Parses an HTML attribute string into [name, value] pairs.
+// Handles double-quoted, single-quoted, unquoted, and naked attributes,
+// including quoted values that contain whitespace.
+// A naked attribute (no '=') yields a null value.
+function parseAttributes(attrString: string): Array<[string, string | null]> {
+	const attrs: Array<[string, string | null]> = [];
+	attributeTokenRegexGlobal.lastIndex = 0;
+	let m: RegExpExecArray | null;
+	while ((m = attributeTokenRegexGlobal.exec(attrString)) !== null) {
+		const name = m[1];
+		const value = m[2] !== undefined ? m[2] : (m[3] !== undefined ? m[3] : (m[4] !== undefined ? m[4] : null));
+		attrs.push([name, value]);
+	}
+	return attrs;
+}
+
+// Renders an attribute back to its HTML form.
+function renderAttribute(name: string, value: string | null): string {
+	if (value === null) {
+		return name;
+	}
+	return name + '="' + he.encode(value) + '"';
+}
 
 export class htmlProcessor {
 	readonly url: web3Url;
@@ -34,40 +56,16 @@ export class htmlProcessor {
 	// Used during HTML processing.
 	protected processHTMLScriptTag = (match: string, scriptAttributes: string, body: string): string => {
 		let result = ['<script'];
-		let scriptSrc = '';
-		for (let attribute of scriptAttributes.split(/\s+/g)) {
-			if (attribute == '') {
+		let scriptSrc: string | null = null;
+		for (const [name, value] of parseAttributes(scriptAttributes)) {
+			if (name == 'src') {
+				// A naked or empty src is treated as an inline script.
+				scriptSrc = value === null ? '' : value;
 				continue;
 			}
-			let attributeMatch = attribute.match(quotedAttributeRegex);
-			if (attributeMatch) {
-				if (attributeMatch[1] == 'src') {
-					scriptSrc = attributeMatch[3];
-					continue;
-				}
-				result.push(attributeMatch[0]);
-				continue;
-			}
-			attributeMatch = attribute.match(unquotedAttributeRegex);
-			if (attributeMatch) {
-				if (attributeMatch[1] == 'src') {
-					scriptSrc = attributeMatch[3];
-					continue;
-				}
-				result.push(attributeMatch[0]);
-				continue;
-			}
-			attributeMatch = attribute.match(nakedAttributeRegex);
-			if (attributeMatch) {
-				if (attributeMatch[1] == 'src') {
-					scriptSrc = '';
-					continue;
-				}
-				result.push(attributeMatch[0]);
-				continue;
-			}
+			result.push(renderAttribute(name, value));
 		}
-		if (scriptSrc != '') {
+		if (scriptSrc !== null && scriptSrc != '') {
 			result.push('src="' + chromeExtensionPrefix + web3ScriptUrlScheme + Base64.encode(this.url.maybeHttp(scriptSrc)) + '"');
 		} else {
 			result.push('src="' + chromeExtensionPrefix + web3ScriptInlineScheme + Base64.encode(body.trim()) + '"');
@@ -80,69 +78,28 @@ export class htmlProcessor {
 	// Used during HTML processing.
 	protected processHTMLLinkTag = (match: string, linkAttributes: string): string => {
 		let result = ['<link'];
-		let linkRel = '';
+		let linkRel: string | null = null;
 		let linkAs = '';
-		let linkHref = '';
-		for (let attribute of linkAttributes.split(/\s+/g)) {
-			if (attribute == '') {
+		let linkHref: string | null = null;
+		for (const [name, value] of parseAttributes(linkAttributes)) {
+			if (name == 'rel') {
+				linkRel = value === null ? '' : value;
 				continue;
 			}
-			let attributeMatch = attribute.match(quotedAttributeRegex);
-			if (attributeMatch) {
-				if (attributeMatch[1] == 'rel') {
-					linkRel = attributeMatch[3];
-					continue;
-				}
-				if (attributeMatch[1] == 'as') {
-					linkAs = attributeMatch[3];
-					continue;
-				}
-				if (attributeMatch[1] == 'href') {
-					linkHref = attributeMatch[3];
-					continue;
-				}
-				result.push(attributeMatch[0]);
+			if (name == 'as') {
+				linkAs = value === null ? '' : value;
 				continue;
 			}
-			attributeMatch = attribute.match(unquotedAttributeRegex);
-			if (attributeMatch) {
-				if (attributeMatch[1] == 'rel') {
-					linkRel = attributeMatch[3];
-					continue;
-				}
-				if (attributeMatch[1] == 'as') {
-					linkAs = attributeMatch[3];
-					continue;
-				}
-				if (attributeMatch[1] == 'href') {
-					linkHref = attributeMatch[3];
-					continue;
-				}
-				result.push(attributeMatch[0]);
+			if (name == 'href') {
+				linkHref = value === null ? '' : value;
 				continue;
 			}
-			attributeMatch = attribute.match(nakedAttributeRegex);
-			if (attributeMatch) {
-				if (attributeMatch[1] == 'rel') {
-					linkRel = '';
-					continue;
-				}
-				if (attributeMatch[1] == 'as') {
-					linkAs = '';
-					continue;
-				}
-				if (attributeMatch[1] == 'href') {
-					linkHref = '';
-					continue;
-				}
-				result.push(attributeMatch[0]);
-				continue;
-			}
+			result.push(renderAttribute(name, value));
 		}
 		if (linkRel == 'prefetch' && linkAs == 'script') {
 			result.push('rel="prefetch"');
-			result.push('rel="script"');
-			result.push('href="' + chromeExtensionPrefix + web3ScriptUrlScheme + Base64.encode(this.url.maybeHttp(linkRel)) + '"');
+			result.push('as="script"');
+			result.push('href="' + chromeExtensionPrefix + web3ScriptUrlScheme + Base64.encode(this.url.maybeHttp(linkHref === null ? '' : linkHref)) + '"');
 			result.push('/>');
 			return result.join(' ');
 		}
@@ -156,7 +113,7 @@ export class htmlProcessor {
 		if (linkAs != '') {
 			result.push('as="' + he.encode(linkAs) + '"');
 		}
-		let linkUrl = this.url.maybeHttp(linkHref);
+		let linkUrl = this.url.maybeHttp(linkHref === null ? '' : linkHref);
 		if (linkUrl.startsWith(web3UrlScheme)) {
 			if (linkRel == 'stylesheet') {
 				linkUrl = chromeExtensionPrefix + web3StylesheetScheme + (new web3Url(linkUrl)).toString().substr(web3UrlScheme.length);
@@ -216,7 +173,9 @@ export function looksLikeHTML(code: string): boolean {
 	if (lowerCode.startsWith('<html')) {
 		return true;
 	}
-	if (lowerCode.indexOf('<head') != -1) {
+	// Only scan the leading portion to avoid false positives on plain-text
+	// or binary content that happens to contain the substring "<head".
+	if (lowerCode.substring(0, 1024).indexOf('<head') != -1) {
 		return true;
 	}
 	return false;

@@ -11,6 +11,7 @@
 		"lib": [
 			"webworker",
 			"ES2021.String",
+			"ES2021.Promise",
 			"dom",
 		],
 	},

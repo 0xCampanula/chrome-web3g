@@ -169,7 +169,11 @@ class chainConfigs extends preflightCheck {
 		providersCell.append(addProviderButton);
 		chainRow.append(providersCell);
 		let buttonCell = $('<td/>');
-		if (chainConfig.DefaultEndpoints.length == 0) {
+		if (chainConfig.Custom) {
+			let removeChainButton = $('<button class="btn btn-outline-danger btn-sm remove-custom-chain first-button">Remove chain</button>');
+			removeChainButton.click((async (event: Event) => await this.removeCustomChain(event, chainRow)).bind(this));
+			buttonCell.append(removeChainButton);
+		} else if (chainConfig.DefaultEndpoints.length == 0) {
 			let noPublicEndpointSpan = $('<span class="no-public-endpoint"/>');
 			noPublicEndpointSpan.text('No public endpoint exists.');
 			buttonCell.append(noPublicEndpointSpan);
@@ -279,6 +283,7 @@ class chainConfigs extends preflightCheck {
 			lastWasCritical = chainConfig.Critical;
 		}
 		$('#chain-configs .rpc-endpoints-use-public').click((async (event: Event) => await this.useAllPublicEndpointsForAllChains(event, allChainRows)).bind(this));
+		$('#add-custom-chain-btn').click((async (event: Event) => await this.addCustomChainFromForm(event)).bind(this));
 		const batchSize = 32;
 		for (let nonCriticalIndex = 0; nonCriticalIndex < nonCriticalRows.length; nonCriticalIndex += batchSize) {
 			let rowsToProcess: JQuery[] = [];
@@ -303,6 +308,46 @@ class chainConfigs extends preflightCheck {
 		chainConfigTable.find('tr.not-critical').show();
 		chainConfigTable.find('button.show-more').hide();
 		this.allChainsExpanded = true;
+	}
+
+	addCustomChainFromForm = async (event: Event) => {
+		event.preventDefault();
+		const idInput = $('#custom-chain-id');
+		const nameInput = $('#custom-chain-name');
+		const rpcInput = $('#custom-chain-rpc');
+		const errorSpan = $('#add-custom-chain-error');
+		const chainID = parseInt(idInput.val().toString().trim(), 10);
+		const chainName = nameInput.val().toString().trim();
+		const rpcEndpoint = rpcInput.val().toString().trim();
+		let chainConfig;
+		try {
+			chainConfig = await config.addCustomChain(chainID, chainName, rpcEndpoint === '' ? [] : [rpcEndpoint]);
+		} catch (e) {
+			errorSpan.text(e instanceof Error ? e.message : String(e));
+			errorSpan.show();
+			return;
+		}
+		errorSpan.text('');
+		errorSpan.hide();
+		idInput.val('');
+		nameInput.val('');
+		rpcInput.val('');
+		// Append a row for the new chain. Custom chains are not critical, and
+		// not-critical rows are hidden by default in CSS: show it explicitly.
+		let chainRow = $('<tr class="chain-config-row not-critical table-odd"/>');
+		chainRow.attr('data-chain-id', chainConfig.ChainID.toString());
+		$('#chain-configs-tbody').append(chainRow);
+		chainRow.show();
+		await this.initializeDOMRow(chainRow);
+	}
+
+	removeCustomChain = async (event: Event, chainRow: JQuery) => {
+		event.preventDefault();
+		if (!window.confirm('Remove this custom chain?')) {
+			return;
+		}
+		await config.removeChainConfig(parseInt(chainRow.attr('data-chain-id')));
+		chainRow.remove();
 	}
 
 	focusNewProvider = (event: Event, chainRow: JQuery) => {

@@ -13,20 +13,12 @@ interface gatewayChain {
 // List of known *.w3link.io gateways.
 const gatewayChains: gatewayChain[] = [
 	{w3link: 'eth',             chainId: 1},
-	{w3link: 'w3q-g',           chainId: 3334},
 	{w3link: 'oeth',            chainId: 10},
 	{w3link: 'arb1',            chainId: 42161},
-	{w3link: 'arb-nova',        chainId: 42170},
 	{w3link: 'metis-andromeda', chainId: 1088},
-	{w3link: 'scr-prealpha',    chainId: 534354},
-	{w3link: 'basegor',         chainId: 84531},
 	{w3link: 'bnb',             chainId: 56},
 	{w3link: 'avax',            chainId: 43114},
-	{w3link: 'ftm',             chainId: 250},
 	{w3link: 'matic',           chainId: 137},
-	{w3link: 'qkc-s0',          chainId: 100001},
-	{w3link: 'hmy-s0',          chainId: 1666600000},
-	{w3link: 'evmos',           chainId: 9001},
 ];
 
 // List of all declarativeNetRequest rule resource types.
@@ -50,18 +42,35 @@ const allDeclarativeNetRequestRuleResourceTypes: chrome.declarativeNetRequest.Re
 // to the extension service worker.
 export function getDeclarativeNetRequestRules(): chrome.declarativeNetRequest.Rule[] {
 	let rules: chrome.declarativeNetRequest.Rule[] = [
-		// Internal *.web3 rewrite rule.
+		// Internal *.web3 rewrite rule, variant with the chain ID encoded as an
+		// extra subdomain label: https://name.<chainId>.web3/path
+		// (higher priority than the plain variant below, which also matches).
 		{
 			'id': 1,
+			'priority': 2,
+			'action': {
+				'type': chrome.declarativeNetRequest.RuleActionType.REDIRECT,
+				'redirect': {
+					'regexSubstitution': chromeExtensionPrefix + web3Scheme + '\\1' + ':' + '\\2' + '\\3',
+				},
+			},
+			'condition': {
+				'regexFilter': '^https?://([^/]+?)\\.(\\d+)\\.web3(|/.*)$',
+				'resourceTypes': allDeclarativeNetRequestRuleResourceTypes,
+			},
+		},
+		// Internal *.web3 rewrite rule, plain variant: https://name.web3/path
+		{
+			'id': 2,
 			'priority': 1,
 			'action': {
 				'type': chrome.declarativeNetRequest.RuleActionType.REDIRECT,
 				'redirect': {
-					'regexSubstitution': chromeExtensionPrefix + web3Scheme + '\\1\\2\\3',
+					'regexSubstitution': chromeExtensionPrefix + web3Scheme + '\\1\\2',
 				},
 			},
 			'condition': {
-				'regexFilter': '^https?://([^/]+)\\.web3(|:\\d+)(|/.*)$',
+				'regexFilter': '^https?://([^/]+?)\\.web3(|/.*)$',
 				'resourceTypes': allDeclarativeNetRequestRuleResourceTypes,
 			},
 		},
@@ -85,7 +94,9 @@ export function getDeclarativeNetRequestRules(): chrome.declarativeNetRequest.Ru
 	let ruleId = 1001;
 	for (let gateway of gatewayChains) {
 		let portPart = '';
-		if (gateway.chainId == 1) {
+		// web3:// URLs default to chain ID 1 when no explicit chain ID is
+		// present; every other chain must be spelled out as web3://name:<id>.
+		if (gateway.chainId != 1) {
 			portPart = ':' + String(gateway.chainId);
 		}
 		rules.push({

@@ -82,7 +82,7 @@ module.exports = {
 			'path': require.resolve('path-browserify'),
 		},
 		alias: {
-			'@chrome-web3-extension-options': path.resolve('/', './dist/chrome-web3-extension-options'),
+			'@chrome-web3-extension-options': path.resolve(__dirname, './dist/chrome-web3-extension-options'),
 		},
 	},
 };

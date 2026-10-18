@@ -17,10 +17,8 @@ const dataScheme = 'data:';
 const httpScheme = 'http://';
 const httpsScheme = 'https://';
 const web3ScriptUrlScheme = 'web3scripturl://';
-const web3DevNullScheme = 'web3devnull://';
 const testHttpUrl = 'https://test.null';
 const testHttpUrlLength = testHttpUrl.length;
-const mimeTypeTextJavascript = 'text/javascript';
 const noEscapeNeededRegex = /^[-_~#$*()[\]{}?+=:;|/., \w]+$/i;
 
 // Escape a string for use as a JavaScript string literal.
@@ -38,9 +36,7 @@ const dataSchemeEsc = escape(dataScheme);
 const httpSchemeEsc = escape(httpScheme);
 const httpsSchemeEsc = escape(httpsScheme);
 const web3ScriptUrlSchemeEsc = escape(web3ScriptUrlScheme);
-const web3DevNullSchemeEsc = escape(web3DevNullScheme);
 const testHttpUrlEsc = escape(testHttpUrl);
-const mimeTypeTextJavascriptEsc = escape(mimeTypeTextJavascript);
 
 // Prevent changes to a property of a given object.
 function sealProperty(obj: jsVarName, propName: jsVarName, propDict: jsExpression): jsStatement {
@@ -272,80 +268,95 @@ export class initScript {
 	} else {
 		url = ${this.escapedOrigin} + (new URL(${href}, ${testHttpUrlEsc} + ${this.escapedPath}).href.substring(${testHttpUrlLength}));
 	}
-	return ${chromeExtensionPrefixEsc} + ${web3ScriptUrlSchemeEsc} + btoa(url);
+	return ${chromeExtensionPrefixEsc} + ${web3ScriptUrlSchemeEsc} + btoa(String.fromCharCode.apply(null, Array.from(new TextEncoder().encode(url))));
 })()`
 		);
+	}
+
+	protected hijackCreatedElementBody = (tagNameExpr: jsExpression, callArgs: jsVarName[]): ((origObj: jsVarName, origFuncName: jsVarName) => jsStatements) => {
+		return (origObj: jsVarName, origFuncName: jsVarName) => {
+			return [
+				`let tagNameLower = ('' + (${tagNameExpr})).toLowerCase()`,
+				`let tag = ${origFuncName}(${callArgs.join(', ')})`,
+				`if (tagNameLower === "script") {
+					let originalSetter = ${getSetter('tag', 'src')};
+					Object.defineProperty(tag, "src", {
+						"get": () => {
+							return tag["_src"];
+						},
+						"set": (src) => {
+							tag["_src"] = ${this.scriptUrl('src')};
+							if (originalSetter !== null) {
+								originalSetter(tag["_src"]);
+							}
+						},
+						"configurable": false,
+					});
+				}`,
+				`if (tagNameLower === "link") {
+					let asSetter = ${getSetter('tag', 'as')};
+					let hrefSetter = ${getSetter('tag', 'href')};
+					Object.defineProperty(tag, "as", {
+						"get": () => {
+							return tag["_as"];
+						},
+						"set": (linkAs) => {
+							tag["_as"] = linkAs;
+							if (asSetter !== null) {
+								asSetter(linkAs);
+							}
+							if (linkAs === "script" && tag["_href"]) {
+								tag["_href"] = ${this.scriptUrl('tag["_href"]')};
+								if (hrefSetter !== null) {
+									hrefSetter(tag["_href"]);
+								}
+							}
+						},
+						"configurable": false,
+					});
+					Object.defineProperty(tag, "href", {
+						"get": () => {
+							return tag["_href"];
+						},
+						"set": (href) => {
+							if (tag["_as"] === "script") {
+								tag["_href"] = ${this.scriptUrl('href')};
+							} else {
+								tag["_href"] = href;
+							}
+							if (hrefSetter !== null) {
+								hrefSetter(tag["_href"]);
+							}
+						},
+						"configurable": false,
+					});
+				}`,
+				`return tag`,
+			];
+		};
 	}
 
 	protected wrapDocumentCreateElement = (): jsStatement => {
 		return wrapFunction('document', 'createElement', {
 			'argNames': ['tagName', 'options'],
-			'body': (origObj: jsVarName, origFuncName: jsVarName) => {
-				return [
-					`let tag = ${origFuncName}(tagName, options)`,
-					`if (tagName === "script") {
-						let originalSetter = ${getSetter('tag', 'src')};
-						Object.defineProperty(tag, "src", {
-							"get": () => {
-								return tag["_src"];
-							},
-							"set": (src) => {
-								tag["_src"] = ${this.scriptUrl('src')};
-								if (originalSetter !== null) {
-									originalSetter(tag["_src"]);
-								}
-							},
-							"configurable": false,
-						});
-					}`,
-					`if (tagName === "link") {
-						let asSetter = ${getSetter('tag', 'as')};
-						let hrefSetter = ${getSetter('tag', 'href')};
-						Object.defineProperty(tag, "as", {
-							"get": () => {
-								return tag["_as"];
-							},
-							"set": (linkAs) => {
-								tag["_as"] = linkAs;
-								if (asSetter !== null) {
-									asSetter(linkAs);
-								}
-								if (linkAs === "script" && tag["_href"]) {
-									tag["_href"] = ${this.scriptUrl('tag["_href"]')};
-									if (hrefSetter !== null) {
-										hrefSetter(tag["_href"]);
-									}
-								}
-							},
-							"configurable": false,
-						});
-						Object.defineProperty(tag, "href", {
-							"get": () => {
-								return tag["_href"];
-							},
-							"set": (href) => {
-								if (tag["_as"] === "script") {
-									tag["_href"] = ${this.scriptUrl('href')};
-								} else {
-									tag["_href"] = href;
-								}
-								if (hrefSetter !== null) {
-									hrefSetter(tag["_href"]);
-								}
-							},
-							"configurable": false,
-						});
-					}`,
-					`return tag`,
-				];
-			},
+			'body': this.hijackCreatedElementBody('tagName', ['tagName', 'options']),
+		});
+	}
+
+	protected wrapDocumentCreateElementNS = (): jsStatement => {
+		return wrapFunction('document', 'createElementNS', {
+			'argNames': ['namespaceURI', 'qualifiedName', 'options'],
+			'body': this.hijackCreatedElementBody('qualifiedName', ['namespaceURI', 'qualifiedName', 'options']),
 		});
 	}
 
 	render = (): string => {
 		return [].concat(
 			staticInit,
-			[this.wrapDocumentCreateElement()],
+			[
+				this.wrapDocumentCreateElement(),
+				this.wrapDocumentCreateElementNS(),
+			],
 		).join(';\n');
 	}
 }

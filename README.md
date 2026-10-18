@@ -1,4 +1,4 @@
-# Chrome extension for `web3://` (ERC-4804) URLs
+﻿# Chrome extension for `web3://` (ERC-4804) URLs
 
 This repository contains the code for a Chrome extension implementing the [ERC-4804] URLs (`web3://` URLs). This can be used to create censorship-resistant websites hosted directly on EVM-compatible blockchains such as Ethereum.
 
@@ -58,7 +58,7 @@ With [Manifest v3], Google has rescinded support for the `webRequestBlocking` pe
 
 The extension works by creating an [extension service worker] that listens for requests on its `chrome-extension://{EXTENSION_ID}` endpoint. Additionally, it uses the [`declarativeNetRequest` API][declarativeNetRequest] with `redirect` rules in order to redirect traffic to w3link gateways and its own fictitious `*.web3` gateway to its own `chrome-extension://{EXTENSION_ID}` endpoint.
 
-When receiving a request, the extension performs a web3 fetch request using the [`web3protocol` library][web3protocol library]. It then inspects the mime-type and the body of the response to see if it looks like HTML. If it does, it rewrites several parts of the HTML in order to make it work within a `chrome-extension` page context. Specifically:
+When receiving a request, the extension performs a web3 fetch request using the [`web3gprotocol` library][web3gprotocol library]. It then inspects the mime-type and the body of the response to see if it looks like HTML. If it does, it rewrites several parts of the HTML in order to make it work within a `chrome-extension` page context. Specifically:
 
 - A `<base href="https://{CONTRACT_ADDRESS}.web3:{CHAIN_ID}/{PATH}" />` tag is added in the `<head>` of the page. This is necessary in order to make all relative and absolute URLs in other parts of the page (`<img>` tags, `<a>` links, etc) point to the right location, rather than the `chrome-extension` page. Since requests to the fictitious `*.web3` TLD are redirected back to the extension, this does not cause any requests or DNS lookups to leak onto the network.
 - All `<link>` URLs that are not stylesheets or prefetched scripts are deleted. This prevents some errors from caused by the `Content-Security-Policy` directive of `chrome-extension` pages.
@@ -116,7 +116,7 @@ Things that could be improved about the extension:
 
 - Allow the user to customize the RPC endpoint used by the extension.
 - Get Chrome to add `web3://` to the list of URL schemes that it allows extensions to register as a handler for. `ipfs://` is currently one of these schemes. As an IANA-registered URL scheme, it should be possible to add `web3://` to this list.
-- Implement automated internal retries. Currently, some requests randomly fail with "execution reverted" error messages. This could be handled in the [`web3protocol` library][web3protocol library] as well.
+- Implement automated internal retries. Currently, some requests randomly fail with "execution reverted" error messages. This could be handled in the [`web3gprotocol` library][web3gprotocol library] as well.
 - Implement light client support, rather than contacting EVM RPC endpoints. This may be possible using [Helios] compiled to WebAssembly, which is supported in Chrome extensions.
 - Add configuration to disable websites from using non-`web3://` URLs (external JavaScript). `web3://` websites should not depend on web2 CDNs serving mutable JavaScript code. Pre-bake popular JavaScript into the extension so that they don't need to be loaded from the chain all the time.
 - Implement better caching mechanism. Right now the extension hard-codes a 30 minute caching buffer in order to improve page loading speed over the more correct `no-cache` setting. This may not be appropriate for all use-cases. The ERC-4804 spec needs a mechanism to specify the equivalent of the HTTP `Cache-Control` header. This could be done in a similar manner as [ERC-7087].
@@ -127,7 +127,7 @@ Things that could be improved about the extension:
 
 [ERC-4804] and the `web3://` URL scheme was designed by [Dr. Qi Zhou] and [EthStorage].
 
-The heavy lifting of actually querying the EVM is done by the [`web3protocol` library][web3protocol library] written by [nand2].
+The heavy lifting of actually querying the EVM is done by the [`web3gprotocol` library][web3gprotocol library] written by [nand2].
 
 ## License
 
@@ -141,7 +141,7 @@ This extension is released under the MIT license.
 [declarativeNetRequest]: https://developer.chrome.com/docs/extensions/reference/declarativeNetRequest
 [extension sandbox pages]: https://developer.chrome.com/docs/extensions/mv3/manifest/sandbox/
 [extension message passing]: https://developer.chrome.com/docs/extensions/mv3/messaging/
-[web3protocol library]: https://github.com/nand2/web3protocol
+[web3gprotocol library]: https://github.com/0xCampanula/web3gprotocol
 [omnibox keyword]: https://developer.chrome.com/docs/extensions/reference/omnibox/
 [Helios]: https://github.com/a16z/helios
 [Dr. Qi Zhou]: https://twitter.com/qc_qizhou

@@ -1,4 +1,4 @@
-import { getDefaultChainList } from 'web3protocol/chains';
+import { getDefaultChainList } from 'web3gprotocol/chains';
 
 interface DefaultChainData {
 	id: number;
@@ -21,16 +21,11 @@ const criticalChainIDs: number[] = [
 	10,       // OP Mainnet
 	100,      // Gnosis
 	137,      // Polygon Mainnet
-	250,      // Fantom Opera
 	314,      // Filecoin Mainnet
 	324,      // ZKSync Era Mainnet
-	333,      // Web3Q Mainnet
-	3333,     // Web3Q Testnet
-	3334,     // Web3Q Galileo
 	5000,     // Mantle Mainnet
 	8453,     // Base
 	42161,    // Arbitrum One
-	42170,    // Arbitrum Nova
 	43114,    // Avalance C-Chain
 	7777777,  // Zora
 ];
@@ -68,6 +63,8 @@ interface ChainConfigData {
 	ChainID: number;
 	Configured: boolean;
 	RPCEndpoints: string[];
+	// Display name, only present for user-defined custom chains.
+	Name?: string;
 };
 
 export class DefaultEndpoint {
@@ -150,6 +147,9 @@ export class ChainConfig {
 	ShortName: string;
 	Configured: boolean;
 	Critical: boolean;
+	// True when the chain was added by the user and is not part of the
+	// built-in chain list. Custom chains can be removed from the options page.
+	Custom: boolean;
 	RPCEndpoints: string[];
 	readonly DefaultEndpoints: DefaultEndpoint[];
 	readonly DefaultChainData: DefaultChainData;
@@ -159,24 +159,23 @@ export class ChainConfig {
 		this.ChainName = defaultData.name;
 		this.ShortName = defaultData.shortName;
 		this.Configured = configData.Configured;
+		this.Custom = false;
 		this.RPCEndpoints = configData.RPCEndpoints;
 		this.DefaultEndpoints = defaultEndpoints;
 		this.DefaultChainData = defaultData;
-		this.Critical = false;
-		for (const chainID of criticalChainIDs) {
-			if (chainID == this.ChainID) {
-				this.Critical = true;
-				break;
-			}
-		}
+		this.Critical = criticalChainIDs.includes(this.ChainID);
 	}
 
 	configData = (): ChainConfigData => {
-		return {
+		const data: ChainConfigData = {
 			'ChainID': this.ChainID,
 			'Configured': this.Configured,
 			'RPCEndpoints': this.RPCEndpoints,
 		};
+		if (this.Custom && this.ChainName) {
+			data.Name = this.ChainName;
+		}
+		return data;
 	}
 
 	toDefaultChainListData = (): DefaultChainData => {
@@ -215,27 +214,20 @@ interface ChainConfigMapping {
 	[key: number]: ChainConfig;
 }
 
-type CallbackFunction = () => Promise<void>;
-
 export class Config {
 	initialized = false;
 	hasOpenedOptionsPageData = false;
 	chainConfigs: ChainConfig[];
 	chainConfigsByID: ChainConfigMapping;
-	callbacks: CallbackFunction[];
 
 	constructor() {
 		this.chainConfigs = [];
-		this.callbacks = [];
 	}
 	protected initialize = async () => {
 		if (this.initialized) {
 			return;
 		}
 		const confBits = await chrome.storage.local.get({[keyVersion]: null});
-		if (confBits[keyVersion] !== null && confBits[keyVersion] !== configurationVersion) {
-			throw new Error('incompatible configuration version');
-		}
 		if (confBits[keyVersion] === null) {
 			const initialConfig: ConfigData = {
 				'HasOpenedOptionsPage': false,
@@ -247,6 +239,8 @@ export class Config {
 			});
 		}
 		chrome.storage.onChanged.addListener(this.reload);
+		// Note: an incompatible stored version is not fatal -- reload() resets
+		// the configuration to defaults instead of breaking the extension.
 		await this.reload();
 		this.initialized = true;
 	}
@@ -256,14 +250,29 @@ export class Config {
 			[keyConfigData]: null,
 		});
 		if (confBits[keyVersion] !== configurationVersion) {
-			this.initialized = false;
-			throw new Error('incompatible configuration version');
+			// The stored configuration comes from an incompatible version of the
+			// extension: reset it to defaults rather than failing outright. The
+			// "has opened options page" flag is preserved so users upgrading are
+			// not greeted with the options page again.
+			console.warn('web3: incompatible configuration version, resetting to defaults');
+			const existing: ConfigData = confBits[keyConfigData];
+			const freshConfig: ConfigData = {
+				'HasOpenedOptionsPage': existing != null && existing.HasOpenedOptionsPage === true,
+				'ChainConfigs': [],
+			};
+			await chrome.storage.local.set({
+				[keyConfigData]: freshConfig,
+				[keyVersion]: configurationVersion,
+			});
+			confBits[keyConfigData] = freshConfig;
 		}
 		const conf: ConfigData = confBits[keyConfigData]
 		let chainConfigs: ChainConfig[] = [];
 		let chainConfigsByID: ChainConfigMapping = {};
 		const defaultChains: DefaultChainData[] = getDefaultChainList();
+		const defaultChainIDs = new Set<number>();
 		for (let defaultChain of defaultChains) {
+			defaultChainIDs.add(defaultChain.id);
 			let chainConfigData: ChainConfigData = null;
 			for (let chainConfData of conf.ChainConfigs) {
 				if (chainConfData.Configured && chainConfData.ChainID == defaultChain.id) {
@@ -288,14 +297,29 @@ export class Config {
 			chainConfigs.push(chainConfig);
 			chainConfigsByID[chainConfig.ChainID] = chainConfig;
 		}
+		// Merge user-defined custom chains: entries whose chain ID is not in the
+		// built-in list (never was, or was pruned from it) are kept as custom
+		// chains, so users of removed chains can keep browsing them. Entries
+		// explicitly added through the options page carry a Name marker and are
+		// kept even if all their endpoints were removed again.
+		for (let chainConfData of conf.ChainConfigs) {
+			if ((!chainConfData.Configured && chainConfData.Name === undefined) || defaultChainIDs.has(chainConfData.ChainID)) {
+				continue;
+			}
+			const syntheticDefaultData: DefaultChainData = {
+				'id': chainConfData.ChainID,
+				'name': chainConfData.Name || ('Chain ' + chainConfData.ChainID),
+				'shortName': String(chainConfData.ChainID),
+				'rpcUrls': [],
+				'contracts': {},
+			};
+			let customConfig = new ChainConfig(chainConfData, syntheticDefaultData, []);
+			customConfig.Custom = true;
+			chainConfigs.push(customConfig);
+			chainConfigsByID[customConfig.ChainID] = customConfig;
+		}
 		this.chainConfigs = chainConfigs;
 		this.chainConfigsByID = chainConfigsByID;
-		for (let callback of this.callbacks) {
-			callback();
-		}
-	}
-	addCallback = (callback: CallbackFunction) => {
-		this.callbacks.push(callback);
 	}
 	getChainConfigs = async (): Promise<ChainConfig[]> => {
 		await this.initialize();
@@ -329,13 +353,58 @@ export class Config {
 		this.chainConfigsByID[chainConfig.ChainID] = chainConfig;
 		await this.save();
 	}
+	addCustomChain = async (chainID: number, chainName: string, rpcEndpoints: string[]): Promise<ChainConfig> => {
+		await this.initialize();
+		if (!Number.isInteger(chainID) || chainID <= 0) {
+			throw new Error('Chain ID must be a positive integer');
+		}
+		if (this.chainConfigsByID[chainID]) {
+			throw new Error('Chain ' + chainID + ' is already listed');
+		}
+		if (rpcEndpoints.length == 0) {
+			throw new Error('At least one RPC endpoint is required');
+		}
+		for (let rpcEndpoint of rpcEndpoints) {
+			const errMessage = CheckSupportableEndpointURL(rpcEndpoint, true);
+			if (errMessage !== '') {
+				throw new Error(errMessage);
+			}
+		}
+		const chainConfigData: ChainConfigData = {
+			'ChainID': chainID,
+			'Configured': true,
+			'RPCEndpoints': [...rpcEndpoints],
+			'Name': chainName,
+		};
+		const syntheticDefaultData: DefaultChainData = {
+			'id': chainID,
+			'name': chainName || ('Chain ' + chainID),
+			'shortName': String(chainID),
+			'rpcUrls': [],
+			'contracts': {},
+		};
+		let chainConfig = new ChainConfig(chainConfigData, syntheticDefaultData, []);
+		chainConfig.Custom = true;
+		await this.setChainConfig(chainConfig);
+		return chainConfig;
+	}
+	removeChainConfig = async (chainID: number) => {
+		await this.initialize();
+		const existing = this.chainConfigsByID[chainID];
+		if (!existing || !existing.Custom) {
+			throw new Error('Only custom chains can be removed');
+		}
+		this.chainConfigs = this.chainConfigs.filter(chainConfig => chainConfig.ChainID !== chainID);
+		delete this.chainConfigsByID[chainID];
+		await this.save();
+	}
 	addDefaultEndpointsToAllChainConfigs = async () => {
 		await this.initialize();
 		let anythingChanged = false;
 		for (let i in this.chainConfigs) {
 			let chainConfig = this.chainConfigs[i];
 			let chainChanged = false;
-			let newEndpoints = chainConfig.RPCEndpoints;
+			let newEndpoints = [...chainConfig.RPCEndpoints];
 			for (let defaultEndpoint of chainConfig.DefaultEndpoints) {
 				let alreadyAdded = false;
 				for (let existingEndpoint of chainConfig.RPCEndpoints) {
@@ -375,7 +444,12 @@ export class Config {
 			'HasOpenedOptionsPage': this.hasOpenedOptionsPageData,
 			'ChainConfigs': [],
 		};
+		// Only chains the user actually touched are persisted; untouched
+		// built-in chains are rebuilt from the defaults on reload.
 		for (let chainConfig of this.chainConfigs) {
+			if (!chainConfig.Configured && !chainConfig.Custom) {
+				continue;
+			}
 			conf.ChainConfigs.push(chainConfig.configData());
 		}
 		await chrome.storage.local.set({

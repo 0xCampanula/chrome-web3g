@@ -1,6 +1,6 @@
 {
   "name": "chrome-web3",
-  "version": "1.0.0",
+  "version": "0.4.0",
   "description": "Access web3:// URLs.",
   "main": "index.js",
   "license": "MIT",
@@ -30,6 +30,6 @@
     "buffer": "^6.0.3",
     "he": "^1.2.0",
     "js-base64": "^3.7.5",
-    "web3protocol": "^0.5.3"
+    "web3gprotocol": "^1.0.0"
   }
 }

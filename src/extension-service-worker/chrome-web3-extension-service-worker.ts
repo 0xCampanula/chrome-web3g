@@ -10,8 +10,6 @@ const { Base64 } = require('js-base64');
 
 // Represents a request made to the extension.
 interface extRequest {
-	// The underlying chrome-extension:// request being made to the extension.
-	request: Request;
 	// The rewritten URL that we are serving.
 	url: string;
 }
@@ -60,27 +58,121 @@ function makeResponse(body: httpBody, responseCode: number, headers: httpHeaders
 		'status': responseCode,
 		'headers': responseHeaders,
 	};
-	if ((body instanceof Uint8Array) || (typeof(body) == 'string')) {
-		return new Response(new Blob([body]), responseOptions);
-	}
+	// Response accepts string, Uint8Array, Blob and ReadableStream directly;
+	// passing the body through as-is avoids an extra full-body copy.
 	return new Response(body, responseOptions);
 }
 
+// Reads a stream fully, decoding it incrementally to avoid intermediate
+// full-body copies (chunk array -> Buffer.concat -> slice -> string).
 async function readAllStream(stream: ReadableStream): Promise<string> {
-	const chunks: Uint8Array[] = [];
 	const reader = stream.getReader();
-	return new Promise<string>(async (resolve, reject) => {
-		let done = false;
-		while (!done) {
-			const read = await reader.read();
-			if (read.value !== undefined && read.value !== null) {
-				chunks.push(read.value);
-			}
-			done = read.done;
+	const decoder = new TextDecoder();
+	let result = '';
+	while (true) {
+		const read = await reader.read();
+		if (read.done) {
+			break;
 		}
-		const concatBuf = Buffer.concat(chunks);
-		const arrayBuf = concatBuf.buffer.slice(concatBuf.byteOffset, concatBuf.byteLength + concatBuf.byteOffset);
-		resolve(new TextDecoder().decode(arrayBuf));
+		if (read.value !== undefined && read.value !== null) {
+			result += decoder.decode(read.value, {'stream': true});
+		}
+	}
+	result += decoder.decode();
+	return result;
+}
+
+// Reads at most maxBytes from the start of a stream for content sniffing,
+// then cancels the reader. Intended for one branch of a tee'd stream.
+async function readStreamPrefix(stream: ReadableStream, maxBytes: number): Promise<string> {
+	const reader = stream.getReader();
+	const decoder = new TextDecoder();
+	let result = '';
+	let received = 0;
+	try {
+		while (received < maxBytes) {
+			const read = await reader.read();
+			if (read.done) {
+				break;
+			}
+			if (read.value !== undefined && read.value !== null) {
+				const remaining = maxBytes - received;
+				const chunk = read.value.length > remaining ? read.value.subarray(0, remaining) : read.value;
+				received += chunk.length;
+				result += decoder.decode(chunk, {'stream': true});
+			}
+		}
+	} finally {
+		await reader.cancel();
+	}
+	result += decoder.decode();
+	return result;
+}
+
+// Renders a user-facing HTML error page for failed web3:// requests, with a
+// link to the options page (failed chains can be re-added there as custom
+// chains) and a retry link. The error message is HTML-escaped.
+function makeErrorPage(errorMessage: string): string {
+	const escapedMessage = errorMessage
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;');
+	return '<!doctype html><html><head><meta charset="utf-8" />'
+		+ '<title>web3:// request failed</title>'
+		+ '<style>'
+		+ 'body{font-family:system-ui,sans-serif;max-width:40rem;margin:6rem auto;padding:0 1.5rem;color:#222;line-height:1.5}'
+		+ 'h1{font-size:1.4rem}'
+		+ '.error-message{background:#f6f6f6;border:1px solid #ddd;border-radius:6px;padding:.75rem 1rem;word-break:break-all;font-family:monospace;font-size:.9rem}'
+		+ '.actions a{display:inline-block;margin-right:1rem;color:#0b57d0}'
+		+ '</style></head><body>'
+		+ '<h1>Unable to load this web3 page</h1>'
+		+ '<p class="error-message">' + escapedMessage + '</p>'
+		+ '<p>This usually means the chain is unreachable, or that it was shut down and '
+		+ 'removed from the built-in chain list. You can add it back as a custom chain '
+		+ 'in the extension options, or check the configured RPC providers.</p>'
+		+ '<p class="actions"><a href="/options">Open extension options</a>'
+		+ '<a href="javascript:location.reload()">Retry</a></p>'
+		+ '</body></html>';
+}
+
+// Builds the HTTP Response for a successful web3 fetch result.
+// forceMime may be used to override the mime-type returned in the response.
+// If processors are given, they will be run over the response body.
+async function serveWeb3Result(result: web3FetchResult, forceMime: string, processors: bodyProcessor[]): Promise<Response> {
+	let body: httpBody = result.output;
+	if (processors != null) {
+		let stringBody = await readAllStream(body);
+		for (let processor of processors) {
+			stringBody = processor(stringBody);
+		}
+		body = new TextEncoder().encode(stringBody);
+	}
+	let httpCode = 200;
+	if (result.httpCode != null && result.httpCode != 0) {
+		httpCode = result.httpCode;
+	}
+	let headers: httpHeaders = {};
+	for (let header in result.httpHeaders) {
+		headers[header.toLowerCase()] = result.httpHeaders[header];
+	}
+	if (forceMime !== null && forceMime !== '') {
+		headers['content-type'] = forceMime;
+	}
+	return makeResponse(body, httpCode, headers);
+}
+
+// Renders the standard error page for a failed web3 fetch.
+function serveWeb3Error(e: any): Response {
+	if (developmentMode()) {
+		throw e;
+	}
+	let errorMessage = String(e);
+	if (e instanceof Error) {
+		errorMessage = e.message;
+	}
+	return makeResponse(makeErrorPage(errorMessage), 502, {
+		'content-type': 'text/html',
 	});
 }
 
@@ -90,55 +182,23 @@ async function readAllStream(stream: ReadableStream): Promise<string> {
 // response body.
 async function makeWeb3Response(web3Promise: Promise<web3FetchResult>, forceMime: string, processors: bodyProcessor[]): Promise<Response> {
 	try {
-		const result = await web3Promise;
-		let body: httpBody = result.output;
-		if (processors != null) {
-			let stringBody = await readAllStream(body);
-			for (let processor of processors) {
-				stringBody = processor(stringBody);
-			}
-			body = new TextEncoder().encode(stringBody);
-		}
-		let httpCode = 200;
-		if (result.httpCode != null && result.httpCode != 0) {
-			httpCode = result.httpCode;
-		}
-		let headers: httpHeaders = {};
-		for (let header in result.httpHeaders) {
-			headers[header.toLowerCase()] = result.httpHeaders[header];
-		}
-		if (forceMime !== null && forceMime !== '') {
-			headers['content-type'] = forceMime;
-		}
-		return makeResponse(body, httpCode, headers);
+		return await serveWeb3Result(await web3Promise, forceMime, processors);
 	} catch (e) {
-		if (developmentMode()) {
-			throw e;
-		}
-		let errorMessage = String(e);
-		if (e instanceof Error) {
-			errorMessage = e.message;
-		}
-		return makeResponse(errorMessage, 502, {
-			'content-type': 'text/plain',
-		});
+		return serveWeb3Error(e);
 	}
 }
 
 // Serves an extension request for the web3:// URL scheme.
 async function serveWeb3Request(w3url: web3Url): Promise<Response> {
-	const web3Promise = client.fetchUrl(w3url);
 	let result: web3FetchResult;
 	try {
-		result = await web3Promise;
+		result = await client.fetchUrl(w3url);
 	} catch (e) {
 		if (developmentMode()) {
 			console.log('Failed to fetch', w3url, ':', e);
-			throw e;
 		}
-		return makeWeb3Response(web3Promise, 'text/plain', null);
+		return serveWeb3Error(e);
 	}
-	const data = String(result.output);
 	let mimeType = null;
 	for (let header in result.httpHeaders) {
 		if (header.toLowerCase() == 'content-type') {
@@ -146,15 +206,21 @@ async function serveWeb3Request(w3url: web3Url): Promise<Response> {
 			break;
 		}
 	}
-	if (mimeType == 'text/html' || mimeType == 'application/xhtml+xml' || looksLikeHTML(data)) {
+	// Sniff the actual content: the mime type reported on-chain is optional,
+	// so HTML detection must inspect the real bytes (String(ReadableStream)
+	// only yields "[object ReadableStream]"). The stream is tee'd so the body
+	// can still be streamed through afterwards.
+	const streamForks = result.output.tee();
+	const sniffed = await readStreamPrefix(streamForks[0], 4096);
+	result.output = streamForks[1];
+	if (mimeType == 'text/html' || mimeType == 'application/xhtml+xml' || looksLikeHTML(sniffed)) {
 		let processor = new htmlProcessor(w3url);
-		return makeWeb3Response(web3Promise, 'text/html', [processor.processHtml]);
-	} else {
-		if (mimeType === null && looksLikeCSS(data)) {
-			mimeType = 'text/css';
-		}
-		return makeWeb3Response(web3Promise, mimeType, null);
+		return serveWeb3Result(result, 'text/html', [processor.processHtml]);
 	}
+	if (mimeType === null && looksLikeCSS(sniffed)) {
+		mimeType = 'text/css';
+	}
+	return serveWeb3Result(result, mimeType, null);
 }
 
 // Serves an extension request for the https:// or http:// URL scheme.
@@ -242,44 +308,37 @@ async function serveWeb3ScriptInitRequest(extReq: extRequest): Promise<Response>
 
 async function serveWeb3StylesheetRequest(extReq: extRequest): Promise<Response> {
 	const decodedUrl = web3Scheme + extReq.url.substring(web3StylesheetScheme.length);
-	const w3url = new web3Url(decodedUrl);
+	let w3url: web3Url;
+	try {
+		w3url = new web3Url(decodedUrl);
+	} catch (e) {
+		return makeResponse('invalid web3 stylesheet URL', 400, {
+			'content-type': 'text/plain',
+		});
+	}
 	return makeWeb3Response(client.fetchUrl(w3url), 'text/css', null);
 }
 
 // Serves an extension request for the web3favicon:// URL scheme.
 async function serveWeb3FaviconRequest(extReq: extRequest): Promise<Response> {
-	const origin = new web3Url(extReq.url.substring(web3FaviconScheme.length));
+	let origin: web3Url;
+	try {
+		origin = new web3Url(extReq.url.substring(web3FaviconScheme.length));
+	} catch (e) {
+		return makeResponse('invalid web3 favicon URL', 400, {
+			'content-type': 'text/plain',
+		});
+	}
 	const pngIconPromise = client.fetchUrl(origin.resolve('/favicon.png'));
 	const icoIconPromise = client.fetchUrl(origin.resolve('/favicon.ico'));
-	let successPromise = null;
-	let remainingPromises = [pngIconPromise, icoIconPromise];
-	while (successPromise === null && remainingPromises.length > 0) {
-		let raceWinner = Promise.race(remainingPromises);
-		try {
-			successPromise = await raceWinner;
-		} catch (e) {
-			successPromise = null;
-			let pendingPromises = [];
-			for (let promise of remainingPromises) {
-				let status = await Promise.race([promise, 'pending']).then(
-					(value) => {
-						return value === 'pending' ? 'pending' : 'fulfilled';
-					},
-					(reason) => {
-						return 'rejected';
-					},
-				);
-				if (status == 'pending') {
-					pendingPromises.push(promise);
-				}
-			}
-			remainingPromises = pendingPromises;
-		}
-	}
-	if (successPromise === null) {
+	// Whichever icon fetch succeeds first wins; Promise.any rejects only when
+	// both failed, in which case there is no favicon to serve.
+	try {
+		const result = await Promise.any([pngIconPromise, icoIconPromise]);
+		return makeWeb3Response(Promise.resolve(result), null, null);
+	} catch (e) {
 		return makeResponse('', 404, {});
 	}
-	return makeWeb3Response(Promise.resolve(successPromise), null, null);
 }
 
 // Serves an extension request for the web3devnull:// URL scheme.
@@ -304,10 +363,8 @@ async function handleRequest(request: Request): Promise<Response> {
 		url = url.substring(0, poundIndex);
 	}
 	const extReq: extRequest = {
-		request: request,
 		url: url,
 	};
-	console.log('Fetching URL:', url);
 	if (url.startsWith(web3ScriptUrlScheme)) {
 		return serveWeb3ScriptURLRequest(extReq);
 	} else if (url.startsWith(web3ScriptInlineScheme)) {
@@ -324,7 +381,7 @@ async function handleRequest(request: Request): Promise<Response> {
 		return makeResponse('Redirecting...', 301, {
 			'location': chromeExtensionPrefix + optionsUrl,
 		});
-	} else if (url.startsWith(optionsUrl)) {
+	} else if (url == optionsUrl || url.startsWith(optionsUrl + '/')) {
 		return renderOptionsUrl(url);
 	} else {
 		let w3url: web3Url;
@@ -347,24 +404,17 @@ self.addEventListener('fetch', (event: FetchEvent) => {
 
 // Handle omnibox input events to support the "web3" omnibox keyword.
 chrome.omnibox.onInputEntered.addListener((text, disposition) => {
-	if (text.startsWith('web3://')) {
-		text = text.substring('web3://'.length);
-	}
-	if (text.startsWith('://')) {
-		text = text.substring('://'.length);
-	}
-	while (text.startsWith('/')) {
-		text = text.substring('/'.length);
-	}
-	let url = chromeExtensionPrefix + web3Scheme + text;
+	// Strip any leading "web3:" and slashes the user may have typed.
+	text = text.replace(/^(web3:)?\/*/i, '');
+	const url = chromeExtensionPrefix + web3Scheme + text;
 	if (disposition == 'currentTab') {
 		chrome.tabs.update({
-			url: url,
+			'url': url,
 		});
 	} else {
 		chrome.tabs.create({
-			active: disposition != 'newForegroundTab',
-			url: url,
+			'active': disposition == 'newForegroundTab',
+			'url': url,
 		});
 	}
 });

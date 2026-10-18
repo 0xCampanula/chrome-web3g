@@ -56,6 +56,20 @@
 						<tbody id="chain-configs-tbody">
 						</tbody>
 					</table>
+					<div class="add-custom-chain">
+						<h3>Add a custom chain</h3>
+						<p>
+							Chains that are not in the built-in list (for example chains that were
+							shut down and removed from it) can be added back here manually.
+						</p>
+						<div class="add-custom-chain-form">
+							<input id="custom-chain-id" type="number" min="1" class="form-control" placeholder="Chain ID (e.g. 3334)" />
+							<input id="custom-chain-name" type="text" class="form-control" placeholder="Name (optional)" />
+							<input id="custom-chain-rpc" type="text" class="form-control" placeholder="https://rpc.example.com" />
+							<button id="add-custom-chain-btn" class="btn btn-primary">Add chain</button>
+						</div>
+						<span id="add-custom-chain-error" class="add-provider-error"></span>
+					</div>
 				</form>
 			</div>
 		</div>
