@@ -10,32 +10,6 @@ body {
 	margin-right: auto;
 }
 
-h1 {
-	text-align: center;
-	margin: 2.5rem;
-}
-
-#preflight-checks {
-	.status {
-		display: inline-block;
-		margin: 0px;
-		vertical-align: middle;
-		width: 1.5rem;
-		height: 1.5rem;
-	}
-	.explanation {
-		display: inline-block;
-		vertical-align: middle;
-	}
-	.collapse-header {
-		text-decoration: none;
-		cursor: pointer;
-		* {
-			text-decoration: none;
-		}
-	}
-}
-
 #chain-configs {
 	table {
 		width: 100%;
@@ -89,7 +63,7 @@ h1 {
 	tr.chain-config-row.not-critical.not-configured.table-even {
 		background-color: rgb(255, 252, 248);
 	}
-	tr.transition-row {
+	tr.critical-to-not-critical {
 		text-align: center;
 	}
 	tr.not-critical {
@@ -100,18 +74,13 @@ h1 {
 		margin-right: 0em;
 		display: inline-block;
 	}
-	.btn.header-toggle {
-		margin-left: 0em;
-		padding-left: 0em;
-		padding-right: 0em;
-		padding-top: 0em;
-		padding-bottom: 0em;
-	}
 	.btn.first-button {
 		margin-left: 0em;
 	}
-	.public-endpoint-hidden {
-		display: none;
+	select.provider-select {
+		display: inline-block;
+		width: auto;
+		max-width: 100%;
 	}
 	.no-endpoint-configured {
 		font-style: italic;
@@ -154,40 +123,6 @@ h1 {
 		#add-custom-chain-error {
 			display: none;
 			margin-top: .5em;
-		}
-	}
-}
-
-#ready-to-browse {
-	display: none;
-	padding-top: 2em;
-	ul {
-		display: block;
-		width: 100%;
-		text-align: center;
-	}
-	li {
-		display: inline-block;
-		text-align: center;
-		width: 30%;
-		a {
-			display: inline-block;
-			width: 192px;
-			text-align: center;
-			text-decoration: none;
-			border: 1px solid #999999;
-			border-radius: 8px;
-			padding: 1em;
-			opacity: 0.9;
-			img {
-				width: 128px;
-				height: 128px;
-				margin: .5em;
-			}
-		}
-		a:hover {
-			opacity: 1;
-			background: #f6f6f6;
 		}
 	}
 }

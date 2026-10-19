@@ -1,48 +1,11 @@
 # 版本更新日志
 
-## 0.4.0（2026-10-18）
+## 0.4.1（2026-10-20）
 
-包含安全审计修复、chainId 编码重构、自定义链支持与依赖升级。
-
-### 新增
-- 选项页支持添加/删除自定义链（chainId + 名称 + RPC），用户曾配置过 RPC 但已从内置列表移除的链自动保留为自定义链
-- 配置版本不兼容时自动重置为默认配置并保留选项页已读标记，不再导致扩展崩溃
-- web3:// 请求失败改为展示 HTML 错误页（错误原因、链已关停提示、选项页入口与重试链接）
-
-### 安全
-- web_accessible_resources 动态服务内容仅对 *.web3、*.w3eth.io、*.w3link.io 域开放，静态资源仍全开；禁止任意网站将扩展当作免费 web3 代理
-- web3 页面沙盒改为基于流头部真实内容（最多 4KB，tee() 分流）嗅探 HTML/CSS，不再依赖链上返回的 Content-Type 字段，确保所有 web3 页面都进入沙盒处理流程，且不影响大文件流式传输
-
-### 重构
-- chainId 从 TCP 端口编码改为子域标签编码，解除 65535 端口上限，所有 chainId 对应的 URL 均合法可访问；声明式网络请求规则按优先级拆分，避免普通规则吞掉 chainId 子域信息
-
-### 修复
-- w3link 网关 chainId 拼接条件写反，oeth/arb1/bnb/avax/matic/metis-andromeda 六个网关全部错误回落到以太坊主网
-- 动态创建的脚本遇到含 Unicode 字符的 URL 时 btoa 抛出 InvalidCharacterError
-- 自定义链删除全部 RPC 后在下次加载时从列表中静默消失
-- omnibox 前后台标签页打开逻辑颠倒
-- HTML 属性解析重写，支持含空格与无引号属性
-- prefetch 分支变量误用
-- developmentMode 判断逻辑优化
-- hostname 统一小写化
-- config 回调异步处理
-- 数组引用污染
-- looksLikeHTML 误报收窄
-- optionsUrl 前缀匹配精确化
-- stylesheet / favicon 加载异常捕获
-
-### 简化
-- favicon 双源竞速由手写 pending 过滤循环改为 Promise.any
-- 选项页资源分发由 40 余个同构 case 改为映射表
-- omnibox 前缀剥离由多段 substring 改为一条正则
-- 配置仅持久化用户改动过的链，不再全量写入 490+ 条默认链
-- serveWeb3Request 响应构建流程拆分，去除对同一 promise 的二次 await
-- TypeScript target 升至 es2021
-
-### 清理
-- 删除死代码约 40 行（未使用导入、无调用函数、只写字段、死常量、调试残留）
-- w3link 网关映射由 15 条精简至 7 条，删除指向已关停链的死映射（w3q-g、arb-nova、scr-prealpha、basegor、ftm、qkc-s0、hmy-s0、evmos）
-- 删除 3 个已关停链的选项页图标（w3q、ftm、arb-nova）
-
-### 依赖
-- web3protocol 更名为 web3gprotocol，升级至 1.0.0（chainlist 由 990 条精简至 499 条，删除全部已关停网络）
+- 支持视频播放
+- 区块链支持减少至9条
+- 支持分块加载
+- 插件配置页面简化
+- 修复CORS问题
+- chainID从TCP端口编码改为子域标签编码
+- 依赖配置更新

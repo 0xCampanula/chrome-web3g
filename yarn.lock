@@ -1133,10 +1133,10 @@ watchpack@^2.4.0:
     glob-to-regexp "^0.4.1"
     graceful-fs "^4.1.2"
 
-web3gprotocol@^1.0.0:
-  version "1.0.0"
-  resolved "https://registry.npmjs.org/web3gprotocol/-/web3gprotocol-1.0.0.tgz"
-  integrity sha512-FmD3lNBqy0Ik1nDbsR+pAHK/s89EdKfV2aM54weu0EW+l8Te2e/bsxf9oO1vrFJQ2uUmNcSmoH+9YIxD7MAZfw==
+web3gprotocol@^1.0.1:
+  version "1.0.1"
+  resolved "https://registry.npmjs.org/web3gprotocol/-/web3gprotocol-1.0.1.tgz"
+  integrity sha512-OZvr0xdImqlUWP/AMedB6RGhppm2otPLtf4WFM4kM8aQUjC1pjuMgh7JDlDeO9BFZ068ju06imsceqIyiL71QA==
   dependencies:
     cross-fetch "^4.0.0"
     mime "^4.0.0"

@@ -19,44 +19,27 @@ const wssScheme = 'wss://';
 const criticalChainIDs: number[] = [
 	1,        // Ethereum
 	10,       // OP Mainnet
-	100,      // Gnosis
-	137,      // Polygon Mainnet
-	314,      // Filecoin Mainnet
-	324,      // ZKSync Era Mainnet
-	5000,     // Mantle Mainnet
-	8453,     // Base
+	56,       // BNB Smart Chain
+	97,       // BNB Smart Chain Testnet
 	42161,    // Arbitrum One
 	43114,    // Avalance C-Chain
-	7777777,  // Zora
+	43113,    // Avalanche Fuji Testnet
+	11155111, // Sepolia
+	100011,   // QuarkChain L2
 ];
 
-const domainNameToEntity: {[name: string]: string} = {
-	'mycryptoapi.com': 'MyCrypto',
-	'cloudflare-eth.com': 'Cloudflare',
-	'publicnode.com': 'PublicNode',
-	'optimism.io': 'Optimism Foundation',
-	'gnosischain.com': 'GnosisDAO',
-	'gateway.fm': 'Gateway.fm',
-	'ankr.com': 'Ankr',
-	'pokt.network': 'POKT Network',
-	'blastapi.io': 'Bware Labs',
-	'onfinality.io': 'OnFinality',
-	'blockpi.network': 'BlockPI',
-	'polygon-rpc.com': 'Ankr',
-	'matic.network': 'Polygon Labs',
-	'chainstacklabs.com': 'Chainstack',
-	'maticvigil.com': 'BlockVigil',
-	'quiknode.pro': 'QuickNode',
-	'bwarelabs.com': 'Bware Labs',
-	'ftm.tools': 'Ankr',
-	'glif.io': 'GLIF',
-	'zksync.io': 'Matter Labs',
-	'web3q.io': 'EthStorage',
-	'mantle.xyz': 'Mantle',
-	'base.org': 'Coinbase',
-	'arbitrum.io': 'Offchain Labs',
-	'avax.network': 'Avalanche Foundation',
-	'zora.energy': 'Zora Labs',
+// Bundled icon file per chain short name (served by options-handler under
+// options/chains/). Chains without an entry show no icon.
+const chainIconFiles: {[shortName: string]: string} = {
+	'eth':    'eth.webp',
+	'oeth':   'oeth.webp',
+	'arb1':   'arb1.webp',
+	'avax':   'avax.webp',
+	'sep':    'sep.webp',
+	'fuji':   'fuji.webp',
+	'bnb':    'bnb.webp',
+	'bnbt':   'bnb.webp',
+	'qkc-l2': 'qkc.webp',
 };
 
 interface ChainConfigData {
@@ -67,71 +50,27 @@ interface ChainConfigData {
 	Name?: string;
 };
 
-export class DefaultEndpoint {
-	Name: string;
-	EndpointURL: string;
-
-	constructor(name: string, endpointURL: string) {
-		this.Name = name;
-		this.EndpointURL = endpointURL;
-	}
-
-	FriendlyName = (): string => {
-		if (this.Name) {
-			return this.Name;
-		}
-		let domainName = this.EndpointURL;
-		if (domainName.startsWith(httpsScheme)) {
-			domainName = domainName.substring(httpsScheme.length);
-		}
-		if (domainName.startsWith(httpScheme)) {
-			domainName = domainName.substring(httpScheme.length);
-		}
-		let indexOfSlash = domainName.indexOf('/');
-		if (indexOfSlash !== -1) {
-			domainName = domainName.substring(0, indexOfSlash);
-		}
-		let indexOfColon = domainName.indexOf(':');
-		if (indexOfColon !== -1) {
-			domainName = domainName.substring(0, indexOfColon);
-		}
-		let fullDomainName = domainName;
-		let indexOfPeriod = domainName.indexOf('.');
-		while (indexOfPeriod !== -1) {
-			if (domainName in domainNameToEntity) {
-				return domainNameToEntity[domainName];
-			}
-			domainName = domainName.substring(indexOfPeriod + ('.'.length));
-			indexOfPeriod = domainName.indexOf('.');
-		}
-		if (fullDomainName.startsWith('www.')) {
-			fullDomainName = fullDomainName.substring('www.'.length);
-		}
-		return fullDomainName;
-	}
-}
-
 export function CheckSupportableEndpointURL(endpointURL: string, allowUnencrypted: boolean) {
 	if (!endpointURL) {
-		return 'Endpoint URL is empty';
+		return '端点 URL 为空';
 	}
 	if (endpointURL.indexOf('$') !== -1) {
-		return "URL cannot contain '$'";
+		return "URL 不能包含 '$'";
 	}
 	if (endpointURL.startsWith(wssScheme)) {
-		return 'WebSocket endpoints not supported';
+		return '不支持 WebSocket 端点';
 	}
 	if (!allowUnencrypted && endpointURL.startsWith(httpScheme)) {
-		return 'Non-encrypted HTTP endpoints not supported';
+		return '不支持未加密的 HTTP 端点';
 	}
 	if (!endpointURL.startsWith(httpsScheme)) {
 		if (allowUnencrypted) {
 			if (endpointURL.startsWith(httpScheme)) {
 				return '';
 			}
-			return `Endpoint must start with ${httpsScheme} or ${httpScheme}`;
+			return `端点必须以 ${httpsScheme} 或 ${httpScheme} 开头`;
 		}
-		return `Endpoint must start with ${httpsScheme}`;
+		return `端点必须以 ${httpsScheme} 开头`;
 	}
 	return '';
 }
@@ -151,10 +90,10 @@ export class ChainConfig {
 	// built-in chain list. Custom chains can be removed from the options page.
 	Custom: boolean;
 	RPCEndpoints: string[];
-	readonly DefaultEndpoints: DefaultEndpoint[];
+	readonly DefaultEndpoints: string[];
 	readonly DefaultChainData: DefaultChainData;
 
-	constructor(configData: ChainConfigData, defaultData: DefaultChainData, defaultEndpoints: DefaultEndpoint[]) {
+	constructor(configData: ChainConfigData, defaultData: DefaultChainData, defaultEndpoints: string[]) {
 		this.ChainID = configData.ChainID;
 		this.ChainName = defaultData.name;
 		this.ShortName = defaultData.shortName;
@@ -189,15 +128,13 @@ export class ChainConfig {
 	}
 
 	IconURL = (): string => {
-		if (!this.Critical) {
+		// Lookup is case-insensitive: chainlist short names are not consistently
+		// lowercased (e.g. "Fuji").
+		const iconFile = chainIconFiles[this.ShortName.toLowerCase()];
+		if (iconFile === undefined) {
 			return null;
 		}
-		let shortName = this.ShortName;
-		if (this.ShortName === undefined) {
-			shortName = this.ChainName;
-		}
-		shortName = shortName.toLowerCase().replace(/ +/g, '_');
-		return `${chromeExtensionPrefix}options/chains/${shortName}.webp`
+		return `${chromeExtensionPrefix}options/chains/${iconFile}`
 	}
 
 	isConfigured = (): boolean => {
@@ -267,6 +204,7 @@ export class Config {
 			confBits[keyConfigData] = freshConfig;
 		}
 		const conf: ConfigData = confBits[keyConfigData]
+		this.hasOpenedOptionsPageData = conf.HasOpenedOptionsPage === true;
 		let chainConfigs: ChainConfig[] = [];
 		let chainConfigsByID: ChainConfigMapping = {};
 		const defaultChains: DefaultChainData[] = getDefaultChainList();
@@ -287,23 +225,23 @@ export class Config {
 					'RPCEndpoints': [],
 				};
 			}
-			let defaultEndpoints: DefaultEndpoint[] = [];
+			let defaultEndpoints: string[] = [];
 			for (let rpcEndpointURL of defaultChain.rpcUrls) {
 				if (CheckSupportableEndpointURL(rpcEndpointURL, false) === '') {
-					defaultEndpoints.push(new DefaultEndpoint(null, rpcEndpointURL));
+					defaultEndpoints.push(rpcEndpointURL);
 				}
 			}
 			let chainConfig = new ChainConfig(chainConfigData, defaultChain, defaultEndpoints);
 			chainConfigs.push(chainConfig);
 			chainConfigsByID[chainConfig.ChainID] = chainConfig;
 		}
-		// Merge user-defined custom chains: entries whose chain ID is not in the
-		// built-in list (never was, or was pruned from it) are kept as custom
-		// chains, so users of removed chains can keep browsing them. Entries
-		// explicitly added through the options page carry a Name marker and are
-		// kept even if all their endpoints were removed again.
+		// Merge user-defined custom chains: only entries explicitly added
+		// through the options page (they carry a Name marker) are resurrected
+		// as custom chains. Stale configured entries left over from pruned
+		// built-in chains are ignored, so the options page lists exactly the
+		// built-in chains plus whatever the user added themselves.
 		for (let chainConfData of conf.ChainConfigs) {
-			if ((!chainConfData.Configured && chainConfData.Name === undefined) || defaultChainIDs.has(chainConfData.ChainID)) {
+			if (chainConfData.Name === undefined || defaultChainIDs.has(chainConfData.ChainID)) {
 				continue;
 			}
 			const syntheticDefaultData: DefaultChainData = {
@@ -356,13 +294,13 @@ export class Config {
 	addCustomChain = async (chainID: number, chainName: string, rpcEndpoints: string[]): Promise<ChainConfig> => {
 		await this.initialize();
 		if (!Number.isInteger(chainID) || chainID <= 0) {
-			throw new Error('Chain ID must be a positive integer');
+			throw new Error('链 ID 必须为正整数');
 		}
 		if (this.chainConfigsByID[chainID]) {
-			throw new Error('Chain ' + chainID + ' is already listed');
+			throw new Error('链 ' + chainID + ' 已在列表中');
 		}
 		if (rpcEndpoints.length == 0) {
-			throw new Error('At least one RPC endpoint is required');
+			throw new Error('至少需要一个 RPC 端点');
 		}
 		for (let rpcEndpoint of rpcEndpoints) {
 			const errMessage = CheckSupportableEndpointURL(rpcEndpoint, true);
@@ -392,42 +330,11 @@ export class Config {
 		await this.initialize();
 		const existing = this.chainConfigsByID[chainID];
 		if (!existing || !existing.Custom) {
-			throw new Error('Only custom chains can be removed');
+			throw new Error('只能删除自定义链');
 		}
 		this.chainConfigs = this.chainConfigs.filter(chainConfig => chainConfig.ChainID !== chainID);
 		delete this.chainConfigsByID[chainID];
 		await this.save();
-	}
-	addDefaultEndpointsToAllChainConfigs = async () => {
-		await this.initialize();
-		let anythingChanged = false;
-		for (let i in this.chainConfigs) {
-			let chainConfig = this.chainConfigs[i];
-			let chainChanged = false;
-			let newEndpoints = [...chainConfig.RPCEndpoints];
-			for (let defaultEndpoint of chainConfig.DefaultEndpoints) {
-				let alreadyAdded = false;
-				for (let existingEndpoint of chainConfig.RPCEndpoints) {
-					if (defaultEndpoint.EndpointURL === existingEndpoint) {
-						alreadyAdded = true;
-						break;
-					}
-				}
-				if (!alreadyAdded) {
-					newEndpoints.push(defaultEndpoint.EndpointURL);
-					chainChanged = true;
-				}
-			}
-			if (chainChanged) {
-				chainConfig.setEndpoints(newEndpoints);
-				this.chainConfigs[i] = chainConfig;
-				this.chainConfigsByID[chainConfig.ChainID] = chainConfig;
-				anythingChanged = true;
-			}
-		}
-		if (anythingChanged) {
-			await this.save();
-		}
 	}
 	hasOpenedOptionsPage = async (): Promise<boolean> => {
 		await this.initialize();

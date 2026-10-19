@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "web3://",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "[Pre-release] Access web3:// URLs",
   "background": {
     "service_worker": "chrome-web3-extension-service-worker.js",
@@ -9,7 +9,8 @@
   },
   "permissions": [
     "declarativeNetRequest",
-    "storage"
+    "storage",
+    "webNavigation"
   ],
   "options_ui": {
     "page": "static/options.html",
@@ -32,7 +33,9 @@
         "static/*"
       ],
       "matches": [
-        "<all_urls>"
+        "*://*.web3/*",
+        "*://*.w3eth.io/*",
+        "*://*.w3link.io/*"
       ]
     },
     {
@@ -46,12 +49,9 @@
         "web3devnull://*"
       ],
       "matches": [
-        "http://*.web3/*",
-        "https://*.web3/*",
-        "http://*.w3eth.io/*",
-        "https://*.w3eth.io/*",
-        "http://*.w3link.io/*",
-        "https://*.w3link.io/*"
+        "*://*.web3/*",
+        "*://*.w3eth.io/*",
+        "*://*.w3link.io/*"
       ]
     }
   ],
